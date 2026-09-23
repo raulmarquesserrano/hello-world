@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { FlatList, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CardProduto } from '@/components/CardProduto';
 import { FiltroCategorias } from '@/components/FiltroCategorias';
-import { PRODUTOS } from '@/constants/produtos';
+import { Carregando, Vazio, Separador } from '@/components/EstadosDeLista';
+import { PRODUTOS_TESTE } from '@/utils/gerarProdutos';
+import { Produto } from '@/types/produto';
 
 const CATEGORIAS = ['todas', 'beauty', 'fragrances', 'furniture'];
 
@@ -11,45 +13,77 @@ export default function CatalogoScreen() {
   const router = useRouter();
   const [categoria, setCategoria] = useState('todas');
   const [favoritos, setFavoritos] = useState<number[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const [atualizando, setAtualizando] = useState(false);
 
-  const visiveis =
-    categoria === 'todas'
-      ? PRODUTOS
-      : PRODUTOS.filter((p) => p.category === categoria);
+  const visiveis = useMemo(() => {
+    return categoria === 'todas'
+      ? PRODUTOS_TESTE
+      : PRODUTOS_TESTE.filter((p) => p.category === categoria);
+  }, [categoria]);
 
-  function alternarFavorito(id: number) {
+  const alternarFavorito = useCallback((id: number) => {
     setFavoritos((atuais) =>
       atuais.includes(id)
         ? atuais.filter((f) => f !== id)
         : [...atuais, id]
     );
-  }
+  }, []);
+
+  const abrir = useCallback(
+    (id: number) => {
+      router.push(`/produto/${id}`);
+    },
+    [router]
+  );
+
+  const atualizar = useCallback(async () => {
+    setAtualizando(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    } finally {
+      setAtualizando(false);
+    }
+  }, []);
+
+  const renderizarItem = useCallback(
+    ({ item }: { item: Produto }) => (
+      <CardProduto
+        produto={item}
+        favorito={favoritos.includes(item.id)}
+        aoAlternarFavorito={alternarFavorito}
+        aoAbrir={abrir}
+      />
+    ),
+    [favoritos, alternarFavorito, abrir]
+  );
+
+  if (carregando) return <Carregando texto="Buscando produtos..." />;
 
   return (
-    <View className="flex-1 bg-white dark:bg-fundo p-4">
-      <FiltroCategorias
-        categorias={CATEGORIAS}
-        selecionada={categoria}
-        aoSelecionar={setCategoria}
-      />
-
-      <ScrollView className="mt-4" showsVerticalScrollIndicator={false}>
-        {visiveis.length === 0 ? (
-          <Text className="text-slate-500 dark:text-suave text-center mt-10">
-            Nenhum produto nesta categoria.
-          </Text>
-        ) : (
-          visiveis.map((produto) => (
-            <CardProduto
-              key={produto.id}
-              produto={produto}
-              favorito={favoritos.includes(produto.id)}
-              aoAlternarFavorito={alternarFavorito}
-              aoAbrir={() => router.push(`/produto/${produto.id}`)}
+    <View className="flex-1 bg-white dark:bg-fundo">
+      <FlatList
+        contentContainerClassName="p-4"
+        data={visiveis}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderizarItem}
+        ListHeaderComponent={
+          <View className="mb-4">
+            <FiltroCategorias
+              categorias={CATEGORIAS}
+              selecionada={categoria}
+              aoSelecionar={setCategoria}
             />
-          ))
-        )}
-      </ScrollView>
+          </View>
+        }
+        ListEmptyComponent={<Vazio texto="Nenhum produto nesta categoria." />}
+        ItemSeparatorComponent={Separador}
+        refreshing={atualizando}
+        onRefresh={atualizar}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={8}
+        windowSize={10}
+      />
     </View>
   );
 }
